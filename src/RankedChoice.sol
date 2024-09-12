@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {EIP712} from "dependencies/@openzeppelin-contracts-5.0.1/utils/cryptography/EIP712.sol";
+import {ECDSA} from "dependencies/@openzeppelin-contracts-5.0.1/utils/cryptography/ECDSA.sol";
 
 contract RankedChoice is EIP712 {
     /*//////////////////////////////////////////////////////////////
