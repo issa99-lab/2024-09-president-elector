@@ -31,11 +31,12 @@ contract RankedChoice is EIP712 {
     // For selecting the president
     address[] private s_candidateList;
     mapping(address candidate => mapping(uint256 voteNumber => mapping(uint256 roundId => uint256 votes)))
-        private s_candidateVotesByRound;
+        private s_candidateVotesByRound; //e condidates voting for themselves
 
     /*//////////////////////////////////////////////////////////////
                              USER FUNCTIONS
     //////////////////////////////////////////////////////////////*/
+    //e are we deploying from the time the president comes in? If so, we need to track the timestamp from the start!
     constructor(address[] memory voters) EIP712("RankedChoice", "1") {
         VOTERS = voters;
         i_presidentalDuration = 1460 days;
@@ -43,10 +44,20 @@ contract RankedChoice is EIP712 {
         s_voteNumber = 0;
     }
 
+    //e voters can call this anytime
     function rankCandidates(address[] memory orderedCandidates) external {
         _rankCandidates(orderedCandidates, msg.sender);
     }
 
+    /*audit When encoding an array in EIP-712, you typically need to hash the array itself separately.
+         implementation of the function is incomplete for the meta-transaction scenario described in the README.
+
+          bytes32 structHash = keccak256(
+    abi.encode(
+        TYPEHASH,
+        keccak256(abi.encodePacked(orderedCandidates))  // hash the array elements
+    )
+);*/
     function rankCandidatesBySig(
         address[] memory orderedCandidates,
         bytes memory signature
@@ -57,19 +68,25 @@ contract RankedChoice is EIP712 {
         _rankCandidates(orderedCandidates, signer);
     }
 
+    //audit doesn't return the address of the winning president? Just sets shit up
     function selectPresident() external {
+        //audit s_previousVoteEndTimeStamp has not been set/initialized! Should also be immutable
         if (
             block.timestamp - s_previousVoteEndTimeStamp <=
             i_presidentalDuration
         ) {
             revert RankedChoice__NotTimeToVote();
         }
-
+        //audit reverts if voters.length is very large that it cannot
         for (uint256 i = 0; i < VOTERS.length; i++) {
+            //rankings per voter 10 people
             address[] memory orderedCandidates = s_rankings[VOTERS[i]][
                 s_voteNumber
             ];
+            //audit   s_candidateList should be initialized with a set max of 10 candidates,
+            //here, voters add other candidates that shouldnt be there to the list
             for (uint256 j = 0; j < orderedCandidates.length; j++) {
+                //the
                 if (!_isInArray(s_candidateList, orderedCandidates[j])) {
                     s_candidateList.push(orderedCandidates[j]);
                 }
@@ -169,9 +186,13 @@ contract RankedChoice is EIP712 {
         }
 
         // Internal Effects
+        //audit we're not passing the vote number, every voter will pass the same vote number?
         s_rankings[voter][s_voteNumber] = orderedCandidates;
     }
 
+    //audit unbounded for loop here, reverts if gas ends for long arrays
+    //natspecs?making me assume shit
+    //are we checking if a candidate is in an array?
     function _isInArray(
         address[] memory array,
         address someAddress
