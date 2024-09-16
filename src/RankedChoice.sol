@@ -57,8 +57,7 @@ contract RankedChoice is EIP712 {
     
 
     -- bytes32 structHash = keccak256(abi.encode(TYPEHASH, orderedCandidates));
-);*/
-    function rankCandidatesBySig(
+);*/ function rankCandidatesBySig(
         address[] memory orderedCandidates,
         bytes memory signature
     ) external {

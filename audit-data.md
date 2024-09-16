@@ -1,16 +1,23 @@
-H-2
+H-1
+Zero Voters on Initialization
 
 ## Summary
 
-The constructor does not check if the voters array is non-empty, allowing a malicious president to initialize the contract with no voters.
+The constructor does not check if the voters array is non-empty or has zero addresses, allowing a malicious president to initialize the contract with no voters.
 
 ## Vulnerability Details
 
+Zero Address Inclusion:
+The constructor does not check if any of the voters or candidates in the lists are the zero address (0x0). Allowing 0x0 addresses in the election process can lead to unintended behavior, such as invalid votes or corrupted election rounds, since 0x0 is not a valid address for voting.
+
+Empty Voter List:
 A malicious president can deploy the contract with an empty voters array, which would result in no votes being cast during voter rankings, effectively making the initial president permanent.
+If an empty voter list is passed, it can lead to undefined behavior, such as the voting process not functioning properly or the recursion terminating prematurely.
 
 ## Impact
 
-This allows a malicious initial president to stay in power indefinitely, as no votes can occur if there are no voters.
+Protocol Instability: The voting process is central to the protocol. If the list of voters is empty at initialization, it could prevent the election from occurring at all. This halts the core functionality of the protocol.
+Invalid Votes: Allowing 0x0 addresses could enable invalid votes to be tallied, which would compromise the fairness of the election process.
 
 ## Tools Used
 
@@ -22,7 +29,12 @@ Add a check in the constructor to ensure the voters array is not empty
 
 ```javascript
  constructor(address[] memory voters) EIP712("RankedChoice", "1") {
-  @>+   require(voters.length > 0, "No voters added");
+   @>++  uint256 votersLength = voters.length;
+  require(votersLength  > 0, "No voters added");
+  for (i=0; i<votersLength ; i++){
+  require(voterList[i] != address(0), "Voter cannot be zero address");
+  voters
+  }
         VOTERS = voters;
         i_presidentalDuration = 1460 days;
         s_currentPresident = msg.sender;
@@ -30,7 +42,8 @@ Add a check in the constructor to ensure the voters array is not empty
     }
 ```
 
-H-3
+H-2
+No Time Control at Initialization
 
 ## Summary
 
@@ -38,21 +51,22 @@ The `s_previousVoteEndTimeStamp` is never initialized in the constructor, causin
 
 ## Vulnerability Details
 
-Since `s_previousVoteEndTimeStamp` defaults to 0, the condition (block.timestamp - s_previousVoteEndTimeStamp <= i_presidentalDuration) at `selectPresident()` will always evaluate as true on the first call, leading to the function reverting with the error `RankedChoice__NotTimeToVote`()
+Without initializing s_previousVoteEndTimeStamp, it defaults to 0. As a result, the condition in selectPresident() that checks if enough time has passed since the last vote ln 76-79:
+
+```javascript
+require(block.timestamp - s_previousVoteEndTimeStamp <=
+  i_presidentalDuration, "RankedChoice__NotTimeToVote");
+```
+
+will always evaluate to true on the first call, leading to the function reverting with the RankedChoice\_\_NotTimeToVote error, since the previousVoteEndTimeStamp appears to be far in the past (timestamp 0).
 
 ## Impact
 
-The president selection process cannot complete, preventing a new president from being selected.
+This bug prevents the president selection process from being completed successfully, as the contract will always revert on the first attempt to select a president. As a result, no new president can be chosen, disrupting the election process.
 
-Add this at `RankedChoice.sol`:
+## POC
 
-```javascript
-+ function getPreviousEndTime() external view returns (uint256) {
-  return s_previousVoteEndTimeStamp;
-  }
-```
-
-POC. Add this at your test suits:
+Add this at your test suits:
 
 ```javascript
 function testSelectPresident() public {
@@ -84,7 +98,7 @@ function testSelectPresident() public {
           rankedChoice.rankCandidates(orderedCandidates);
       }
 
-      vm.warp(block.timestamp + rankedChoice.getPreviousEndTime());
+      vm.warp(block.timestamp + rankedChoice.getDuration());
 
       rankedChoice.selectPresident();
       assertEq(rankedChoice.getCurrentPresident(), candidates[0]);
@@ -106,10 +120,11 @@ constructor(address[] memory voters, uint256 _previousVoteEndTimeStamp) EIP712("
 ```
 
 H-3
+Dynamic Candidate List in `selectPresident()`
 
 ## Summary
 
-The s_candidateList is dynamically modified based on voter input, allowing voters to add unauthorized candidates.
+The `s_candidateList` is dynamically modified based on voter input, allowing voters to add unauthorized candidates.
 
 ## Vulnerability Details
 
@@ -128,37 +143,10 @@ Manual code review
 Predefine a list of valid candidates during the election setup (constructor) to ensure only authorized candidates are part of the selection process.
 
 Remove: ln 94&94
-
-RE-CHECK THIS!!!
-
-## Summary
-
-The function `isInArray` contains an unbounded for loop that can cause transactions to revert due to exceeding gas limits.
-
-## Vulnerability Details
-
-If the voters array is very large, the transaction may run out of gas before reaching the end of the loop, causing the function to revert and preventing the voter from casting their vote.
-
-## Impact
-
-This issue can prevent legitimate voters from casting their votes, especially when the voter is located at the end of the array.
-
-## Tools Used
-
-Manual code review + Foundry
-
-## Recommendations
-
-Instead of looping through the array, use a mapping for voter validation to ensure O(1) lookups.
-
-- Set a max length of voters at constructor. Loop while filling the mapping
-
-```javascript
-+   mapping(address => bool) private isVoter;
-
-```
+Add specific candidate list at constructor with checks on zero addresses and duplicates
 
 H-4
+Potential for Voter Manipulation
 
 ## Summary
 
@@ -180,7 +168,84 @@ Foundry
 
 Add validation to ensure that each candidate is ranked only once per voter:
 
-6
+```javascript
++   mapping(address => bool) private isVoter;
+
+constructor(address[] memory voters) EIP712("RankedChoice", "1") {
+  ++ uint256 votersLength = voters.length;
+  require(votersLength  > 0, "No voters added");
+  require(votersLength  < = MAX_VOTERS>, "Too many voters");
++  for (i=0; i<votersLength ; i++){
+  + require (!isVoter[voter], "Duplicate voter found");
+  require(voterList[i] != address(0), "Voter cannot be zero address");
+  isVoter[voterList[i]] = true;
+  }}
+
+  }
+```
+
+M-1
+Unbounded For Loop in `_isInArray` when looping through voters at `_rankCandidates()` function
+
+## Summary
+
+The function `isInArray` when used at `_rankCandidates()`, function contains an unbounded for loop that can cause transactions to revert due to exceeding gas limits .
+
+## Vulnerability Details
+
+The current implementation of `_isInArray` iterates over the entire array of voters to check if a given address is in the array. If the array size is very large (since there is no limit set for the number of voters), the loop may exceed the gas limits, causing the transaction to revert. This prevents the last voters from casting their votes and could disrupt the voting process.
+
+## Impact
+
+Transaction Failure: Transactions can fail if the loop runs out of gas, particularly affecting voters located towards the end of the array.
+Disruption in Voting Process: Valid voters may be unable to cast their votes if the function reverts due to gas limits.
+
+## Tools Used
+
+Manual code review + Foundry
+
+## Recommendations
+
+Use a Mapping: Replace the array with a mapping for voter validation, which provides O(1) lookup time and avoids gas issues associated with large arrays.
+
+Set Maximum Limits: Implement a maximum length for the voter array and check this limit in the constructor to prevent excessive sizes.
+
+Update Code: Modify the constructor and `_rankCandidates()` function to use a mapping instead of an array for voter validation. Here’s an example:
+
+```javascript
++   mapping(address => bool) private isVoter;
++ uint256 private constant MAX_VOTERS = 500;
+
+
+ constructor(address[] memory voters) EIP712("RankedChoice", "1") {
+   @>++  uint256 votersLength = voters.length;
+  require(votersLength  > 0, "No voters added");
+  require(votersLength  < = MAX_VOTERS>, "Too many voters");
+  for (i=0; i<votersLength ; i++){
+  require(voterList[i] != address(0), "Voter cannot be zero address");
++  isVoter[voterList[i]] = true;
+  }}
+
+ function _rankCandidates(
+        address[] memory orderedCandidates,
+        address voter
+    ) internal {
+        // Checks
+        if (orderedCandidates.length > MAX_CANDIDATES) {
+            revert RankedChoice__InvalidInput();
+        }
+ --       if (!_isInArray(VOTERS, voter)) {
+ ++         if(!isVoter[voter]){
+            revert RankedChoice__InvalidVoter();
+
+ } ";
+        }
+        s_rankings[voter][s_voteNumber] = orderedCandidates;
+    }
+
+```
+
+M-2
 Lack of Feedback in selectPresident
 
 ## Summary
@@ -201,16 +266,16 @@ Manual review
 
 ## Recommendations
 
-Modify the selectPresident function to return the address of the newly selected president:
+Modify the `selectPresident()` function to return the address of the newly selected president:
 
 ```javascript
-+  function selectPresident() external view returns (address){
++ln75  function selectPresident() external view returns (address){
 
-+return s_currentPresident;
++ln113 return s_currentPresident;
  }
 ```
 
-7
+L-1
 Missing NatSpec Documentation
 
 ## Summary
@@ -233,7 +298,8 @@ Manual Review
 
 Add NatSpec comments to all functions and variables, explaining their purpose, parameters, and return values.
 
-8
+L-2
+Lack of Events for Key Actions
 
 ## Summary
 
@@ -254,15 +320,3 @@ Manual code review
 ## Recommendations
 
 Add events for important actions, such as votes and president selections:
-
-11
-
-## Summary
-
-## Vulnerability Details
-
-## Impact
-
-## Tools Used
-
-## Recommendations
