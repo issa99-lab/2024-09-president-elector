@@ -17,7 +17,7 @@ contract RankedChoice is EIP712 {
                            STORAGE VARIABLES
     //////////////////////////////////////////////////////////////*/
     address private s_currentPresident;
-    uint256 private s_previousVoteEndTimeStamp;
+    uint256 public s_previousVoteEndTimeStamp;
     uint256 private s_voteNumber;
     uint256 private immutable i_presidentalDuration;
     bytes32 public constant TYPEHASH = keccak256("rankCandidates(uint256[])");
@@ -37,6 +37,7 @@ contract RankedChoice is EIP712 {
                              USER FUNCTIONS
     //////////////////////////////////////////////////////////////*/
     //e are we deploying from the time the president comes in? If so, we need to track the timestamp from the start!
+    // DONE FROM THE MOMENT A PRES IS SELECTED
     constructor(address[] memory voters) EIP712("RankedChoice", "1") {
         VOTERS = voters;
         i_presidentalDuration = 1460 days;
@@ -53,24 +54,25 @@ contract RankedChoice is EIP712 {
          implementation of the function is incomplete for the meta-transaction scenario described in the README.
 
           bytes32 structHash = keccak256(
-    abi.encode(
-        TYPEHASH,
-        keccak256(abi.encodePacked(orderedCandidates))  // hash the array elements
-    )
+    
+
+    -- bytes32 structHash = keccak256(abi.encode(TYPEHASH, orderedCandidates));
 );*/
     function rankCandidatesBySig(
         address[] memory orderedCandidates,
         bytes memory signature
     ) external {
-        bytes32 structHash = keccak256(abi.encode(TYPEHASH, orderedCandidates));
+        bytes32 structHash = keccak256(
+            abi.encode(TYPEHASH, keccak256(abi.encodePacked(orderedCandidates)))
+        );
+
         bytes32 hash = _hashTypedDataV4(structHash);
         address signer = ECDSA.recover(hash, signature);
         _rankCandidates(orderedCandidates, signer);
     }
 
-    //audit doesn't return the address of the winning president? Just sets shit up
+    //audit doesn't return the address of the winning president? Just sets things up
     function selectPresident() external {
-        //audit s_previousVoteEndTimeStamp has not been set/initialized! Should also be immutable
         if (
             block.timestamp - s_previousVoteEndTimeStamp <=
             i_presidentalDuration
@@ -85,6 +87,7 @@ contract RankedChoice is EIP712 {
             ];
             //audit   s_candidateList should be initialized with a set max of 10 candidates,
             //here, voters add other candidates that shouldnt be there to the list
+            //gas orderedCandidates.length outer variable
             for (uint256 j = 0; j < orderedCandidates.length; j++) {
                 //the
                 if (!_isInArray(s_candidateList, orderedCandidates[j])) {
@@ -160,11 +163,13 @@ contract RankedChoice is EIP712 {
         );
 
         bool passedCandidate = false;
-        for (uint256 i; i < candidateList.length; i++) {
+        for (uint256 i = 0; i < candidateList.length; i++) {
+            if (candidateList[i] == fewestVotesCandidate) {
+                passedCandidate = true;
+                continue;
+            }
             if (passedCandidate) {
                 newCandidateList[i - 1] = candidateList[i];
-            } else if (candidateList[i] == fewestVotesCandidate) {
-                passedCandidate = true;
             } else {
                 newCandidateList[i] = candidateList[i];
             }
@@ -191,7 +196,7 @@ contract RankedChoice is EIP712 {
     }
 
     //audit unbounded for loop here, reverts if gas ends for long arrays
-    //natspecs?making me assume shit
+    //natspecs? making me assume stuff
     //are we checking if a candidate is in an array?
     function _isInArray(
         address[] memory array,
@@ -220,5 +225,9 @@ contract RankedChoice is EIP712 {
 
     function getCurrentPresident() external view returns (address) {
         return s_currentPresident;
+    }
+
+    function getPreviousEndTime() external view returns (uint256) {
+        return s_previousVoteEndTimeStamp;
     }
 }

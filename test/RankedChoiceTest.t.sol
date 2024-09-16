@@ -9,7 +9,7 @@ contract RankedChoiceTest is Test {
     address[] candidates;
 
     uint256 constant MAX_VOTERS = 100;
-    uint256 constant MAX_CANDIDATES = 20;
+    uint256 constant MAX_CANDIDATES = 4;
     uint256 constant VOTERS_ADDRESS_MODIFIER = 100;
     uint256 constant CANDIDATES_ADDRESS_MODIFIER = 200;
 
@@ -29,7 +29,12 @@ contract RankedChoiceTest is Test {
     }
 
     function testVote() public {
-        orderedCandidates = [candidates[0], candidates[1], candidates[2]];
+        orderedCandidates = [
+            candidates[0],
+            candidates[1],
+            candidates[2],
+            candidates[3]
+        ];
         vm.prank(voters[0]);
         rankedChoice.rankCandidates(orderedCandidates);
 
@@ -39,7 +44,12 @@ contract RankedChoiceTest is Test {
     function testSelectPresident() public {
         assert(rankedChoice.getCurrentPresident() != candidates[0]);
 
-        orderedCandidates = [candidates[0], candidates[1], candidates[2]];
+        orderedCandidates = [
+            candidates[0],
+            candidates[1],
+            candidates[2],
+            candidates[3]
+        ];
         uint256 startingIndex = 0;
         uint256 endingIndex = 60;
         for (uint256 i = startingIndex; i < endingIndex; i++) {
@@ -47,9 +57,14 @@ contract RankedChoiceTest is Test {
             rankedChoice.rankCandidates(orderedCandidates);
         }
 
-        startingIndex = endingIndex + 1;
+        startingIndex = endingIndex + 1; //61
         endingIndex = 100;
-        orderedCandidates = [candidates[3], candidates[1], candidates[4]];
+        orderedCandidates = [
+            candidates[3],
+            candidates[1],
+            candidates[0],
+            candidates[2]
+        ];
         for (uint256 i = startingIndex; i < endingIndex; i++) {
             vm.prank(voters[i]);
             rankedChoice.rankCandidates(orderedCandidates);
@@ -64,7 +79,12 @@ contract RankedChoiceTest is Test {
     function testSelectPresidentWhoIsSecondMostPopular() public {
         assert(rankedChoice.getCurrentPresident() != candidates[0]);
 
-        orderedCandidates = [candidates[0], candidates[1], candidates[2]];
+        orderedCandidates = [
+            candidates[0],
+            candidates[1],
+            candidates[2],
+            candidates[0]
+        ];
         uint256 startingIndex = 0;
         uint256 endingIndex = 24;
         for (uint256 i = startingIndex; i < endingIndex; i++) {
@@ -74,7 +94,12 @@ contract RankedChoiceTest is Test {
 
         startingIndex = endingIndex + 1;
         endingIndex = 49;
-        orderedCandidates = [candidates[3], candidates[1], candidates[4]];
+        orderedCandidates = [
+            candidates[1],
+            candidates[0],
+            candidates[3],
+            candidates[2]
+        ];
         for (uint256 i = startingIndex; i < endingIndex; i++) {
             vm.prank(voters[i]);
             rankedChoice.rankCandidates(orderedCandidates);
@@ -82,24 +107,40 @@ contract RankedChoiceTest is Test {
 
         startingIndex = endingIndex + 1;
         endingIndex = 74;
-        orderedCandidates = [candidates[7], candidates[1], candidates[10]];
-        for (uint256 i = 0; i < MAX_VOTERS / 3; i++) {
+        orderedCandidates = [
+            candidates[3],
+            candidates[1],
+            candidates[1],
+            candidates[1]
+        ];
+        for (uint256 i = startingIndex; i < endingIndex; i++) {
             vm.prank(voters[i]);
             rankedChoice.rankCandidates(orderedCandidates);
         }
 
         startingIndex = endingIndex + 1;
         endingIndex = 82;
-        orderedCandidates = [candidates[12], candidates[1], candidates[18]];
-        for (uint256 i = 0; i < MAX_VOTERS / 3; i++) {
+        orderedCandidates = [
+            candidates[2],
+            candidates[1],
+            candidates[1],
+            candidates[2]
+        ];
+        for (uint256 i = startingIndex; i < endingIndex; i++) {
             vm.prank(voters[i]);
             rankedChoice.rankCandidates(orderedCandidates);
         }
 
         startingIndex = endingIndex + 1;
         endingIndex = 100;
-        orderedCandidates = [candidates[1], candidates[9], candidates[11]];
-        for (uint256 i = 0; i < MAX_VOTERS / 3; i++) {
+        orderedCandidates = [
+            candidates[0],
+            candidates[2],
+            candidates[2],
+            candidates[2]
+        ];
+
+        for (uint256 i = startingIndex; i < endingIndex; i++) {
             vm.prank(voters[i]);
             rankedChoice.rankCandidates(orderedCandidates);
         }
@@ -107,6 +148,6 @@ contract RankedChoiceTest is Test {
         vm.warp(block.timestamp + rankedChoice.getDuration());
 
         rankedChoice.selectPresident();
-        assertEq(rankedChoice.getCurrentPresident(), candidates[1]);
+        assertEq(rankedChoice.getCurrentPresident(), candidates[0]);
     }
 }
