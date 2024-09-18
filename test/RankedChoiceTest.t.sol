@@ -8,7 +8,7 @@ contract RankedChoiceTest is Test {
     address[] voters;
     address[] candidates;
 
-    uint256 constant MAX_VOTERS = 100;
+    uint256 constant MAX_VOTERS = 9000;
     uint256 constant MAX_CANDIDATES = 4;
     uint256 constant VOTERS_ADDRESS_MODIFIER = 100;
     uint256 constant CANDIDATES_ADDRESS_MODIFIER = 200;
@@ -35,10 +35,13 @@ contract RankedChoiceTest is Test {
             candidates[2],
             candidates[3]
         ];
-        vm.prank(voters[0]);
+        vm.prank(voters[8999]);
         rankedChoice.rankCandidates(orderedCandidates);
 
-        assertEq(rankedChoice.getUserCurrentVote(voters[0]), orderedCandidates);
+        assertEq(
+            rankedChoice.getUserCurrentVote(voters[8999]),
+            orderedCandidates
+        );
     }
 
     function testSelectPresident() public {

@@ -17,6 +17,7 @@ If an empty voter list is passed, it can lead to undefined behavior, such as the
 ## Impact
 
 Protocol Instability: The voting process is central to the protocol. If the list of voters is empty at initialization, it could prevent the election from occurring at all. This halts the core functionality of the protocol.
+
 Invalid Votes: Allowing 0x0 addresses could enable invalid votes to be tallied, which would compromise the fairness of the election process.
 
 ## Tools Used
@@ -30,10 +31,9 @@ Add a check in the constructor to ensure the voters array is not empty
 ```javascript
  constructor(address[] memory voters) EIP712("RankedChoice", "1") {
    @>++  uint256 votersLength = voters.length;
-  require(votersLength  > 0, "No voters added");
-  for (i=0; i<votersLength ; i++){
-  require(voterList[i] != address(0), "Voter cannot be zero address");
-  voters
+ + require(votersLength  > 0, "No voters added");
+  + for (i=0; i<votersLength ; i++){
+ + require(voterList[i] != address(0), "Voter cannot be zero address");
   }
         VOTERS = voters;
         i_presidentalDuration = 1460 days;
@@ -51,14 +51,14 @@ The `s_previousVoteEndTimeStamp` is never initialized in the constructor, causin
 
 ## Vulnerability Details
 
-Without initializing s_previousVoteEndTimeStamp, it defaults to 0. As a result, the condition in selectPresident() that checks if enough time has passed since the last vote ln 76-79:
+Without initializing `s_previousVoteEndTimeStamp`, it defaults to 0. As a result, the condition in `selectPresident()` that checks if enough time has passed since the last vote ln 76-79:
 
 ```javascript
 require(block.timestamp - s_previousVoteEndTimeStamp <=
   i_presidentalDuration, "RankedChoice__NotTimeToVote");
 ```
 
-will always evaluate to true on the first call, leading to the function reverting with the RankedChoice\_\_NotTimeToVote error, since the previousVoteEndTimeStamp appears to be far in the past (timestamp 0).
+will always evaluate to true on the first call, leading to the function reverting with the `RankedChoice__NotTimeToVote` error, since the `previousVoteEndTimeStamp` isn't initialized thus empty.
 
 ## Impact
 
@@ -68,7 +68,7 @@ This bug prevents the president selection process from being completed successfu
 
 Add this at your test suits:
 
-```javascript
+```Solidity
 function testSelectPresident() public {
       assert(rankedChoice.getCurrentPresident() != candidates[0]);
 
@@ -166,30 +166,52 @@ Foundry
 
 ## Recommendations
 
-Add validation to ensure that each candidate is ranked only once per voter:
+To ensure that each candidate is ranked only once per voter in the `_rankCandidates` function, we can add a check to see if any candidate is duplicated within the `orderedCandidates` array. This can be done by using a temporary `mapping(address => bool)` inside the function to track if a candidate has already been ranked by the voter.
 
-```javascript
-+   mapping(address => bool) private isVoter;
+```Javascript
+function _rankCandidates(
+        address[] memory orderedCandidates,
+        address voter
+    ) internal {
+        // Checks
+        if (orderedCandidates.length > MAX_CANDIDATES) {
+            revert RankedChoice__InvalidInput();
+        }
+        if (!_isInArray(VOTERS, voter)) {
+            revert RankedChoice__InvalidVoter();
+        }
 
-constructor(address[] memory voters) EIP712("RankedChoice", "1") {
-  ++ uint256 votersLength = voters.length;
-  require(votersLength  > 0, "No voters added");
-  require(votersLength  < = MAX_VOTERS>, "Too many voters");
-+  for (i=0; i<votersLength ; i++){
-  + require (!isVoter[voter], "Duplicate voter found");
-  require(voterList[i] != address(0), "Voter cannot be zero address");
-  isVoter[voterList[i]] = true;
-  }}
+@>++        // Temporary mapping to track if a candidate has already been ranked
++       mapping(address => bool) memory rankedAlready;
 
-  }
++       // Ensure all ranked candidates are valid and not duplicated
++      for (uint256 i = 0; i < orderedCandidates.length; i++) {
++           address candidate = orderedCandidates[i];
+
++          // Check if the candidate is valid
++          if (!s_isValidCandidate[candidate]) {
++              revert RankedChoice__InvalidCandidate();
++          }
+
++       // Check if this candidate has already been ranked by the voter
++     if (rankedAlready[candidate]) {
++         revert RankedChoice__DuplicateRanking();  // Revert if duplicate ranking
++      }
+
++        // Mark candidate as ranked
++       rankedAlready[candidate] = true;
++       }
+
+        // Internal Effects
+        s_rankings[voter][s_voteNumber] = orderedCandidates;
+    }
+
 ```
-
-M-1
-Unbounded For Loop in `_isInArray` when looping through voters at `_rankCandidates()` function
 
 ## Summary
 
 The function `isInArray` when used at `_rankCandidates()`, function contains an unbounded for loop that can cause transactions to revert due to exceeding gas limits .
+<https://github.com/Cyfrin/2024-09-president-elector/blob/fccb8e2b6a32404b4664fa001faa334f258b4947/src/RankedChoice.sol#L167>
 
 ## Vulnerability Details
 
@@ -202,7 +224,38 @@ Disruption in Voting Process: Valid voters may be unable to cast their votes if 
 
 ## Tools Used
 
-Manual code review + Foundry
+Manual code review + Foundry.
+
+## POC
+
+If we had 30,000 voters, the transaction will revert at set Up.
+Add this to your test suite:
+
+```Solidity
+contract RankedChoiceTest is Test {
+    address[] voters;
+    address[] candidates;
+
+    uint256 constant MAX_VOTERS = 30000;
+    uint256 constant MAX_CANDIDATES = 4;
+    uint256 constant VOTERS_ADDRESS_MODIFIER = 100;
+    uint256 constant CANDIDATES_ADDRESS_MODIFIER = 200;
+
+    RankedChoice rankedChoice;
+
+    address[] orderedCandidates;
+
+    function setUp() public {
+        for (uint256 i = 0; i < MAX_VOTERS; i++) {
+            voters.push(address(uint160(i + VOTERS_ADDRESS_MODIFIER)));
+        }
+        rankedChoice = new RankedChoice(voters);
+
+        for (uint256 i = 0; i < MAX_CANDIDATES; i++) {
+            candidates.push(address(uint160(i + CANDIDATES_ADDRESS_MODIFIER)));
+        }
+    }
+```
 
 ## Recommendations
 
@@ -219,10 +272,9 @@ Update Code: Modify the constructor and `_rankCandidates()` function to use a ma
 
  constructor(address[] memory voters) EIP712("RankedChoice", "1") {
    @>++  uint256 votersLength = voters.length;
-  require(votersLength  > 0, "No voters added");
-  require(votersLength  < = MAX_VOTERS>, "Too many voters");
-  for (i=0; i<votersLength ; i++){
-  require(voterList[i] != address(0), "Voter cannot be zero address");
+ + require(votersLength  > 0 && votersLength  < = MAX_VOTERS , "Invalid voter number");
++  for (i=0; i<votersLength ; i++){
++  require(voterList[i] != address(0), "Voter cannot be zero address");
 +  isVoter[voterList[i]] = true;
   }}
 
@@ -244,6 +296,8 @@ Update Code: Modify the constructor and `_rankCandidates()` function to use a ma
     }
 
 ```
+
+````
 
 M-2
 Lack of Feedback in selectPresident
@@ -273,7 +327,7 @@ Modify the `selectPresident()` function to return the address of the newly selec
 
 +ln113 return s_currentPresident;
  }
-```
+````
 
 L-1
 Missing NatSpec Documentation
